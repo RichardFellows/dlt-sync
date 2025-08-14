@@ -1,0 +1,108 @@
+# DLT Pipeline Configuration for MSSQL Prod to Staging
+# This configuration file defines connection strings and table transfer specifications
+
+# Pipeline metadata
+pipeline_name: mssql_prod_to_staging
+dataset_name: staging
+
+# Connection strings
+# You can use environment variable substitution for security
+# Example: ${PROD_DB_CONNECTION} will read from environment variable
+prod_connection: "DRIVER={ODBC Driver 17 for SQL Server};SERVER=prod-server.database.windows.net;DATABASE=ProdDB;UID=username;PWD=password;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+
+staging_connection: "DRIVER={ODBC Driver 17 for SQL Server};SERVER=staging-server.database.windows.net;DATABASE=StagingDB;UID=username;PWD=password;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+
+# Table configurations
+# Each table can have one of three load types:
+# 1. incremental - Loads only new records based on watermark column
+# 2. full_refresh - Truncates and reloads entire table
+# 3. scd - Slowly Changing Dimension with IsLatest flag management
+
+tables:
+  # Example 1: Incremental load using SystemCalendarId
+  - schema: dbo
+    table: Reporting_Client
+    load_type: incremental
+    watermark_column: SystemCalendarId
+    batch_size: 10000  # Optional, defaults to 10000
+
+  # Example 2: Incremental load using a different column
+  - schema: dbo
+    table: Reporting_Orders
+    load_type: incremental
+    watermark_column: OrderDate
+    batch_size: 25000
+
+  # Example 3: Full refresh (truncate and reload)
+  - schema: dbo
+    table: Reference_Countries
+    load_type: full_refresh
+    batch_size: 5000
+
+  # Example 4: Another full refresh table
+  - schema: dbo
+    table: Reference_Products
+    load_type: full_refresh
+
+  # Example 5: SCD Type 2 table with IsLatest flag
+  - schema: dbo
+    table: Dim_Customer
+    load_type: scd
+    scd_config:
+      # Column that tracks when record was modified
+      modified_column: LastModified
+      # Column that indicates the current version (BIT field)
+      is_latest_column: IsLatest
+      # Column that stores the end date for historical records (optional)
+      end_date_column: EndDate
+      # Primary key(s) that identify the entity
+      primary_keys: 
+        - CustomerId
+    batch_size: 5000
+
+  # Example 6: SCD table with composite primary key
+  - schema: dbo
+    table: Dim_Product
+    load_type: scd
+    scd_config:
+      modified_column: ModifiedDate
+      is_latest_column: IsLatest
+      end_date_column: ValidTo
+      primary_keys:
+        - ProductId
+        - VariantId
+    batch_size: 10000
+
+  # Example 7: SCD table without EndDate column (only IsLatest flag)
+  - schema: dbo
+    table: Dim_Employee
+    load_type: scd
+    scd_config:
+      modified_column: LastModified
+      is_latest_column: IsCurrent
+      # end_date_column is optional - omit if not present
+      primary_keys:
+        - EmployeeId
+
+  # Example 8: Incremental load with timestamp column
+  - schema: analytics
+    table: FactSales
+    load_type: incremental
+    watermark_column: CreatedDateTime
+    batch_size: 50000
+
+  # Example 9: Reference table with full refresh
+  - schema: ref
+    table: Calendar
+    load_type: full_refresh
+    batch_size: 1000
+
+# Optional: Global settings
+global_settings:
+  # Default batch size if not specified per table
+  default_batch_size: 10000
+  # Retry configuration
+  max_retries: 3
+  retry_delay_seconds: 30
+  # Parallel processing (number of tables to process simultaneously)
+  parallel_tables: 2
